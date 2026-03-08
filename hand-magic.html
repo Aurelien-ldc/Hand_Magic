@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>✋ Hand Magic</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #03000a;
+      --accent: #7b2fff;
+      --glow: #c24bff;
+    }
+
+    body {
+      background: var(--bg);
+      color: #fff;
+      font-family: 'Orbitron', monospace;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      cursor: none;
+    }
+
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    #video {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 180px;
+      height: 130px;
+      border-radius: 12px;
+      border: 2px solid rgba(123, 47, 255, 0.5);
+      box-shadow: 0 0 20px rgba(123, 47, 255, 0.3);
+      opacity: 0.85;
+      z-index: 10;
+      transform: scaleX(-1);
+      object-fit: cover;
+    }
+
+    #overlay-canvas {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 180px;
+      height: 130px;
+      border-radius: 12px;
+      z-index: 11;
+      transform: scaleX(-1);
+      pointer-events: none;
+    }
+
+    #ui {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 20;
+      padding: 24px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+
+    #title {
+      font-size: clamp(1rem, 2.5vw, 1.6rem);
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #c24bff, #7b2fff, #00d4ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: none;
+      filter: drop-shadow(0 0 12px rgba(194, 75, 255, 0.6));
+    }
+
+    #status-panel {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #gesture-display {
+      font-size: clamp(0.7rem, 1.5vw, 1rem);
+      letter-spacing: 0.15em;
+      color: #c24bff;
+      text-shadow: 0 0 10px rgba(194, 75, 255, 0.8);
+      min-height: 1.4em;
+      transition: all 0.2s;
+    }
+
+    #status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #444;
+      margin-right: 8px;
+      transition: background 0.3s, box-shadow 0.3s;
+      vertical-align: middle;
+    }
+    #status-dot.active {
+      background: #00ff88;
+      box-shadow: 0 0 10px #00ff88;
+    }
+    #status-dot.detecting {
+      background: #ffaa00;
+      box-shadow: 0 0 10px #ffaa00;
+      animation: pulse-dot 0.8s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulse-dot {
+      from { opacity: 0.5; } to { opacity: 1; }
+    }
+
+    #hint {
+      position: fixed;
+      bottom: 170px;
+      right: 20px;
+      z-index: 20;
+      font-size: 0.58rem;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.35);
+      text-align: right;
+      line-height: 1.8;
+      pointer-events: none;
+    }
+
+    #hint span {
+      display: block;
+    }
+    #hint .key {
+      color: rgba(194, 75, 255, 0.7);
+    }
+
+    .corner-deco {
+      position: fixed;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .corner-deco svg { opacity: 0.15; }
+    .corner-deco.tl { top: 0; left: 0; }
+    .corner-deco.br { bottom: 0; right: 0; transform: rotate(180deg); }
+
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      transition: opacity 0.8s;
+    }
+    #loading-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #loading-title {
+      font-size: clamp(1.5rem, 4vw, 3rem);
+      font-weight: 900;
+      letter-spacing: 0.25em;
+      background: linear-gradient(135deg, #c24bff, #7b2fff, #00d4ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 20px rgba(194, 75, 255, 0.7));
+      text-align: center;
+    }
+    #loading-sub {
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      color: rgba(255,255,255,0.4);
+    }
+    #loading-bar-wrap {
+      width: 260px;
+      height: 3px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #loading-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #7b2fff, #c24bff, #00d4ff);
+      border-radius: 2px;
+      transition: width 0.3s;
+      box-shadow: 0 0 10px rgba(194, 75, 255, 0.8);
+    }
+    #loading-msg {
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      color: rgba(255,255,255,0.3);
+      min-height: 1em;
+    }
+
+    #permission-btn {
+      margin-top: 16px;
+      padding: 12px 32px;
+      background: transparent;
+      border: 1px solid rgba(194, 75, 255, 0.6);
+      color: #c24bff;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+      display: none;
+    }
+    #permission-btn:hover {
+      background: rgba(194, 75, 255, 0.1);
+      box-shadow: 0 0 20px rgba(194, 75, 255, 0.3);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading-screen">
+  <div id="loading-title">HAND MAGIC</div>
+  <div id="loading-sub">GESTURE REACTIVE EXPERIENCE</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+  <div id="loading-msg">Initialisation...</div>
+  <button id="permission-btn" onclick="requestCamera()">ACTIVER LA CAMÉRA</button>
+</div>
+
+<!-- Main canvas -->
+<canvas id="canvas"></canvas>
+
+<!-- Video feed -->
+<video id="video" autoplay muted playsinline></video>
+<canvas id="overlay-canvas"></canvas>
+
+<!-- UI -->
+<div id="ui">
+  <div id="title">✋ HAND MAGIC</div>
+  <div id="status-panel">
+    <div><span id="status-dot"></span><span id="status-text" style="font-size:0.6rem;letter-spacing:0.15em;color:rgba(255,255,255,0.4);">CAMÉRA</span></div>
+    <div id="gesture-display">—</div>
+  </div>
+</div>
+
+<div id="hint">
+  <span class="key">MAIN À PLAT</span><span>→ orbe lumineux</span>
+  <span class="key">POING FERMÉ</span><span>→ explosion de couleurs</span>
+  <span class="key">DOIGTS LEVÉS</span><span>→ traînées de particules</span>
+</div>
+
+<!-- Corner decorations -->
+<div class="corner-deco tl">
+  <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+    <path d="M0 0 L120 0 L120 10 L10 10 L10 120 L0 120 Z" fill="#c24bff"/>
+    <path d="M30 0 L30 30 L0 30" stroke="#7b2fff" stroke-width="1" fill="none"/>
+  </svg>
+</div>
+<div class="corner-deco br">
+  <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+    <path d="M0 0 L120 0 L120 10 L10 10 L10 120 L0 120 Z" fill="#c24bff"/>
+    <path d="M30 0 L30 30 L0 30" stroke="#7b2fff" stroke-width="1" fill="none"/>
+  </svg>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const overlayCanvas = document.getElementById('overlay-canvas');
+const octx = overlayCanvas.getContext('2d');
+const video = document.getElementById('video');
+const gestureDisplay = document.getElementById('gesture-display');
+const statusDot = document.getElementById('status-dot');
+const loadingScreen = document.getElementById('loading-screen');
+const loadingBar = document.getElementById('loading-bar');
+const loadingMsg = document.getElementById('loading-msg');
+const permBtn = document.getElementById('permission-btn');
+
+let W, H;
+let particles = [];
+let orbs = [];
+let explosions = [];
+let trails = [];
+let handPos = { x: 0, y: 0 };
+let handPresent = false;
+let currentGesture = 'none'; // 'open', 'closed', 'pointing', 'none'
+let lastGesture = 'none';
+let frameCount = 0;
+let gestureChangeTime = 0;
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── Color palettes ───────────────────────────────────────────────────────────
+const PALETTES = {
+  orb: ['#c24bff','#7b2fff','#00d4ff','#ff2fff','#a855f7'],
+  explosion: [
+    '#ff0080','#ff6b00','#ffdd00','#00ff88','#00d4ff',
+    '#7b2fff','#c24bff','#ff2fff','#ff4444','#44ffaa',
+    '#ffaa44','#44aaff','#ff44ff','#ffffff'
+  ],
+  trail: ['#c24bff','#00d4ff','#ff2fff','#7b2fff','#ffffff'],
+};
+
+function rndColor(palette) {
+  return palette[Math.floor(Math.random() * palette.length)];
+}
+
+// ─── Background particles (ambient) ──────────────────────────────────────────
+class AmbientParticle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.r = Math.random() * 1.5 + 0.3;
+    this.alpha = Math.random() * 0.3 + 0.05;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.life = 1;
+    this.color = rndColor(PALETTES.orb);
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) this.reset();
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+for (let i = 0; i < 120; i++) particles.push(new AmbientParticle());
+
+// ─── Orb (open hand) ─────────────────────────────────────────────────────────
+class Orb {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.targetX = x; this.targetY = y;
+    this.baseR = 80;
+    this.r = 0;
+    this.phase = Math.random() * Math.PI * 2;
+    this.alive = true;
+    this.opacity = 0;
+    this.rings = Array.from({length: 5}, (_, i) => ({
+      angle: Math.random() * Math.PI * 2,
+      speed: (Math.random() * 0.02 + 0.01) * (Math.random() < 0.5 ? 1 : -1),
+      r: this.baseR * (0.4 + i * 0.15),
+      dotCount: 6 + i * 2,
+      color: PALETTES.orb[i % PALETTES.orb.length],
+    }));
+  }
+
+  update(tx, ty) {
+    this.targetX = tx; this.targetY = ty;
+    this.x += (this.targetX - this.x) * 0.12;
+    this.y += (this.targetY - this.y) * 0.12;
+    this.phase += 0.03;
+    this.r = this.baseR + Math.sin(this.phase) * 12;
+    this.opacity = Math.min(1, this.opacity + 0.06);
+    this.rings.forEach(ring => { ring.angle += ring.speed; });
+  }
+
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.opacity * 0.9;
+
+    // Core glow
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r * 0.6);
+    grad.addColorStop(0, 'rgba(194,75,255,0.3)');
+    grad.addColorStop(0.5, 'rgba(123,47,255,0.1)');
+    grad.addColorStop(1, 'rgba(0,212,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rings with dots
+    this.rings.forEach(ring => {
+      for (let d = 0; d < ring.dotCount; d++) {
+        const a = ring.angle + (d / ring.dotCount) * Math.PI * 2;
+        const dx = this.x + Math.cos(a) * ring.r;
+        const dy = this.y + Math.sin(a) * ring.r;
+        const ds = 2.5 + Math.sin(this.phase + d) * 1.2;
+
+        ctx.save();
+        ctx.globalAlpha = this.opacity * (0.6 + 0.4 * Math.sin(this.phase * 1.5 + d));
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = ring.color;
+        ctx.fillStyle = ring.color;
+        ctx.beginPath();
+        ctx.arc(dx, dy, ds, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+
+    // Outer circle outline
+    ctx.globalAlpha = this.opacity * 0.5;
+    ctx.strokeStyle = 'rgba(194,75,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  fadeOut() {
+    this.opacity -= 0.08;
+    if (this.opacity <= 0) this.alive = false;
+  }
+}
+
+// ─── Explosion particle (fist) ────────────────────────────────────────────────
+class ExplosionParticle {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.ox = x; this.oy = y;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 18 + 4;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.r = Math.random() * 5 + 2;
+    this.color = rndColor(PALETTES.explosion);
+    this.alpha = 1;
+    this.decay = Math.random() * 0.02 + 0.015;
+    this.gravity = Math.random() * 0.3 + 0.1;
+    this.trail = [];
+    this.alive = true;
+    // Random shape: 0=circle, 1=star, 2=line
+    this.shape = Math.floor(Math.random() * 3);
+    this.rotation = Math.random() * Math.PI * 2;
+    this.rotSpeed = (Math.random() - 0.5) * 0.3;
+  }
+  update() {
+    this.trail.push({ x: this.x, y: this.y, a: this.alpha });
+    if (this.trail.length > 8) this.trail.shift();
+    this.vx *= 0.97;
+    this.vy += this.gravity;
+    this.x += this.vx;
+    this.y += this.vy;
+    this.alpha -= this.decay;
+    this.rotation += this.rotSpeed;
+    if (this.alpha <= 0) this.alive = false;
+  }
+  draw() {
+    // Trail
+    for (let i = 0; i < this.trail.length; i++) {
+      const t = this.trail[i];
+      const ta = (i / this.trail.length) * t.a * 0.4;
+      ctx.save();
+      ctx.globalAlpha = ta;
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, this.r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = this.color;
+    ctx.fillStyle = this.color;
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation);
+
+    if (this.shape === 0) {
+      ctx.beginPath();
+      ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (this.shape === 1) {
+      // Star
+      ctx.beginPath();
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * Math.PI * 2 - Math.PI / 2;
+        const a2 = a + Math.PI / 5;
+        p === 0 ? ctx.moveTo(Math.cos(a) * this.r, Math.sin(a) * this.r) : ctx.lineTo(Math.cos(a) * this.r, Math.sin(a) * this.r);
+        ctx.lineTo(Math.cos(a2) * this.r * 0.4, Math.sin(a2) * this.r * 0.4);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-this.r, 0); ctx.lineTo(this.r, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, -this.r); ctx.lineTo(0, this.r);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+// ─── Trail (pointing gesture) ─────────────────────────────────────────────────
+class TrailPoint {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.alpha = 1;
+    this.r = Math.random() * 4 + 2;
+    this.color = rndColor(PALETTES.trail);
+    this.alive = true;
+  }
+  update() {
+    this.alpha -= 0.025;
+    this.r *= 0.97;
+    if (this.alpha <= 0) this.alive = false;
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = this.color;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── Gesture detection ────────────────────────────────────────────────────────
+function detectGesture(landmarks) {
+  // Finger tip and PIP indices: [tip, pip]
+  const fingers = [
+    [8, 6],   // index
+    [12, 10], // middle
+    [16, 14], // ring
+    [20, 18], // pinky
+  ];
+
+  let extendedCount = 0;
+  for (const [tip, pip] of fingers) {
+    if (landmarks[tip].y < landmarks[pip].y) extendedCount++;
+  }
+
+  // Thumb
+  const thumbExtended = landmarks[4].x < landmarks[3].x;
+
+  // Calculate hand openness via spread of fingers
+  const wrist = landmarks[0];
+  const middleTip = landmarks[12];
+  const palmSize = Math.hypot(middleTip.x - wrist.x, middleTip.y - wrist.y);
+
+  if (extendedCount === 0) return 'closed';
+  if (extendedCount >= 3) return 'open';
+  return 'pointing';
+}
+
+// ─── MediaPipe Hands ──────────────────────────────────────────────────────────
+let hands;
+let cameraStarted = false;
+
+function initMediaPipe() {
+  hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.6,
+  });
+
+  hands.onResults(onResults);
+}
+
+function onResults(results) {
+  // Draw skeleton on overlay
+  octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lm = results.multiHandLandmarks[0];
+    handPresent = true;
+    statusDot.className = 'active';
+
+    // Mirror X for display (video is already mirrored via CSS)
+    const palmX = (1 - lm[9].x) * W;
+    const palmY = lm[9].y * H;
+    handPos.x = palmX;
+    handPos.y = palmY;
+
+    currentGesture = detectGesture(lm);
+
+    // Draw skeleton on small overlay
+    drawSkeleton(lm);
+
+    gestureDisplay.textContent =
+      currentGesture === 'open' ? '✋ MAIN OUVERTE' :
+      currentGesture === 'closed' ? '✊ POING FERMÉ' :
+      '☝️ POINTAGE';
+
+  } else {
+    handPresent = false;
+    currentGesture = 'none';
+    statusDot.className = 'detecting';
+    gestureDisplay.textContent = '—';
+    // Fade out orbs
+    if (orbs.length) orbs.forEach(o => o.opacity -= 0.05);
+  }
+}
+
+function drawSkeleton(lm) {
+  const vw = overlayCanvas.width;
+  const vh = overlayCanvas.height;
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],
+    [0,17]
+  ];
+  octx.save();
+  octx.strokeStyle = 'rgba(194,75,255,0.8)';
+  octx.lineWidth = 1.5;
+  for (const [a,b] of connections) {
+    octx.beginPath();
+    // Note: overlay is CSS-mirrored so no need to flip
+    octx.moveTo(lm[a].x * vw, lm[a].y * vh);
+    octx.lineTo(lm[b].x * vw, lm[b].y * vh);
+    octx.stroke();
+  }
+  for (const p of lm) {
+    octx.fillStyle = 'rgba(0,212,255,0.9)';
+    octx.beginPath();
+    octx.arc(p.x * vw, p.y * vh, 2.5, 0, Math.PI * 2);
+    octx.fill();
+  }
+  octx.restore();
+}
+
+// ─── Spawn effects ────────────────────────────────────────────────────────────
+let activeOrb = null;
+let lastExplosionTime = 0;
+
+function spawnExplosion(x, y) {
+  const now = performance.now();
+  if (now - lastExplosionTime < 80) return;
+  lastExplosionTime = now;
+  const count = 60 + Math.floor(Math.random() * 40);
+  for (let i = 0; i < count; i++) {
+    explosions.push(new ExplosionParticle(x, y));
+  }
+  // Flash
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  const flashGrad = ctx.createRadialGradient(x, y, 0, x, y, 200);
+  flashGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  flashGrad.addColorStop(0.2, 'rgba(194,75,255,0.5)');
+  flashGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = flashGrad;
+  ctx.beginPath();
+  ctx.arc(x, y, 200, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+function loop() {
+  frameCount++;
+  ctx.fillStyle = 'rgba(3,0,10,0.18)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Ambient particles
+  particles.forEach(p => { p.update(); p.draw(); });
+
+  // Gesture effects
+  if (handPresent) {
+    const { x, y } = handPos;
+
+    if (currentGesture === 'open') {
+      // Orb effect
+      if (!activeOrb) {
+        activeOrb = new Orb(x, y);
+        orbs.push(activeOrb);
+      } else {
+        activeOrb.update(x, y);
+      }
+
+      // Occasional ambient sparkles
+      if (frameCount % 3 === 0) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 50 + Math.random() * 60;
+        trails.push(new TrailPoint(
+          x + Math.cos(angle) * dist,
+          y + Math.sin(angle) * dist
+        ));
+      }
+
+    } else if (currentGesture === 'closed') {
+      // Fade out orb
+      if (activeOrb) {
+        activeOrb.fadeOut();
+        if (!activeOrb.alive) {
+          orbs = orbs.filter(o => o.alive);
+          activeOrb = null;
+        }
+      }
+      // Explosion burst — continuously while fist
+      if (frameCount % 8 === 0) spawnExplosion(x, y);
+
+    } else if (currentGesture === 'pointing') {
+      // Fade orb
+      if (activeOrb) {
+        activeOrb.fadeOut();
+        if (!activeOrb.alive) { orbs = orbs.filter(o => o.alive); activeOrb = null; }
+      }
+      // Trail
+      if (frameCount % 2 === 0) trails.push(new TrailPoint(x, y));
+    } else {
+      if (activeOrb) {
+        activeOrb.fadeOut();
+        if (!activeOrb.alive) { orbs = orbs.filter(o => o.alive); activeOrb = null; }
+      }
+    }
+
+    // On gesture change: trigger big explosion on close
+    if (currentGesture !== lastGesture) {
+      if (currentGesture === 'closed') {
+        for (let burst = 0; burst < 3; burst++) {
+          setTimeout(() => spawnExplosion(
+            handPos.x + (Math.random()-0.5)*60,
+            handPos.y + (Math.random()-0.5)*60
+          ), burst * 80);
+        }
+      }
+      lastGesture = currentGesture;
+    }
+  } else {
+    if (activeOrb) {
+      activeOrb.fadeOut();
+      if (!activeOrb.alive) { orbs = orbs.filter(o => o.alive); activeOrb = null; }
+    }
+    lastGesture = 'none';
+  }
+
+  // Draw orbs
+  orbs.forEach(o => { if (o.alive) o.draw(); });
+  orbs = orbs.filter(o => o.alive);
+
+  // Draw explosions
+  explosions.forEach(e => { e.update(); e.draw(); });
+  explosions = explosions.filter(e => e.alive);
+
+  // Draw trails
+  trails.forEach(t => { t.update(); t.draw(); });
+  trails = trails.filter(t => t.alive);
+
+  requestAnimationFrame(loop);
+}
+
+// ─── Camera & loading ─────────────────────────────────────────────────────────
+function setLoadingMsg(msg, pct) {
+  loadingMsg.textContent = msg;
+  loadingBar.style.width = pct + '%';
+}
+
+async function requestCamera() {
+  permBtn.style.display = 'none';
+  setLoadingMsg('Accès caméra...', 30);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    video.srcObject = stream;
+    await video.play();
+    setLoadingMsg('Chargement MediaPipe...', 60);
+    initMediaPipe();
+    overlayCanvas.width = 180;
+    overlayCanvas.height = 130;
+
+    const camera = new Camera(video, {
+      onFrame: async () => { await hands.send({ image: video }); },
+      width: 640, height: 480,
+    });
+
+    setLoadingMsg('Démarrage...', 90);
+    await camera.start();
+    statusDot.className = 'detecting';
+
+    setTimeout(() => {
+      setLoadingMsg('Prêt !', 100);
+      setTimeout(() => {
+        loadingScreen.classList.add('hidden');
+        loop();
+      }, 600);
+    }, 800);
+
+  } catch (e) {
+    loadingMsg.textContent = 'Erreur caméra. Vérifiez les permissions.';
+    loadingMsg.style.color = '#ff4444';
+    permBtn.style.display = 'inline-block';
+    permBtn.textContent = 'RÉESSAYER';
+    console.error(e);
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  setLoadingMsg('Chargement des scripts...', 15);
+  setTimeout(() => {
+    permBtn.style.display = 'inline-block';
+    setLoadingMsg('Cliquez pour activer la caméra', 20);
+  }, 1000);
+  // Start ambient animation during loading
+  loop();
+});
+</script>
+</body>
+</html>

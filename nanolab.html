@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NanoLab — Gesture Interface</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --cyan: #00ffe7;
+  --blue: #0066ff;
+  --green: #00ff88;
+  --warn: #ffaa00;
+  --red: #ff3355;
+  --bg-overlay: rgba(2, 8, 20, 0.55);
+  --panel: rgba(0, 20, 40, 0.75);
+  --border: rgba(0, 255, 231, 0.25);
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-ui: 'Exo 2', sans-serif;
+}
+
+body {
+  background: #020814;
+  color: #fff;
+  font-family: var(--font-ui);
+  overflow: hidden;
+  width: 100vw; height: 100vh;
+  cursor: none;
+}
+
+/* ── Camera background ── */
+#video-bg {
+  position: fixed;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 1s;
+}
+#video-bg.visible { opacity: 1; }
+
+/* Dark overlay so UI stays readable */
+#bg-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Scanline effect */
+#bg-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,0.03) 0px,
+    rgba(0,0,0,0.03) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+}
+
+/* ── Main canvas ── */
+#canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%; height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* ── HUD panels ── */
+.hud-panel {
+  position: fixed;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  padding: 14px 18px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--cyan);
+  letter-spacing: 0.1em;
+  box-shadow: 0 0 30px rgba(0,255,231,0.05), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* ── Top bar ── */
+#topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  height: 52px;
+  background: rgba(2, 8, 20, 0.85);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+#logo {
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  text-shadow: 0 0 20px rgba(0,255,231,0.5);
+}
+#logo span { color: rgba(255,255,255,0.4); font-weight: 300; }
+
+#topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 0.12em;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #333;
+  transition: all 0.3s;
+}
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); animation: blink 2s ease-in-out infinite; }
+.dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation: blink 0.6s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── Left panel — gesture info ── */
+#panel-gesture {
+  left: 20px;
+  top: 72px;
+  width: 200px;
+}
+#panel-gesture .panel-title {
+  font-size: 0.6rem;
+  color: rgba(0,255,231,0.5);
+  letter-spacing: 0.2em;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+#gesture-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  color: #fff;
+  min-height: 1.4em;
+  margin-bottom: 6px;
+  transition: all 0.2s;
+}
+#gesture-desc {
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.4);
+  line-height: 1.6;
+  min-height: 2.5em;
+}
+
+.divider { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 0.6rem;
+}
+.label-row .key { color: rgba(0,255,231,0.5); }
+.label-row .val { color: rgba(255,255,255,0.7); }
+
+/* ── Right panel — molecule info ── */
+#panel-molecule {
+  right: 20px;
+  top: 72px;
+  width: 210px;
+}
+#mol-name {
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+#mol-formula {
+  font-size: 0.75rem;
+  color: var(--cyan);
+  margin-bottom: 10px;
+}
+#mol-desc {
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.4);
+  line-height: 1.6;
+}
+.mol-btn {
+  display: inline-block;
+  margin: 3px 3px 0 0;
+  padding: 4px 10px;
+  background: rgba(0,255,231,0.05);
+  border: 1px solid rgba(0,255,231,0.2);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--cyan);
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.1em;
+}
+.mol-btn:hover, .mol-btn.active {
+  background: rgba(0,255,231,0.15);
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0,255,231,0.2);
+}
+
+/* ── Bottom panel — legend ── */
+#panel-legend {
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  background: rgba(2, 8, 20, 0.8);
+  border: 1px solid var(--border);
+  padding: 10px 24px;
+  border-radius: 30px;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+}
+#panel-legend span { color: var(--cyan); }
+
+/* ── Nano grip indicator ── */
+#grip-indicator {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  opacity: 0;
+}
+#grip-indicator.visible { opacity: 1; }
+
+/* ── Loading ── */
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #020814;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  transition: opacity 0.8s;
+}
+#loading.hidden { opacity: 0; pointer-events: none; }
+#load-title {
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: clamp(1.5rem, 4vw, 2.8rem);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  text-shadow: 0 0 30px rgba(0,255,231,0.6);
+}
+#load-sub {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  color: rgba(255,255,255,0.3);
+}
+#load-bar-wrap {
+  width: 300px; height: 2px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#load-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  transition: width 0.4s;
+  box-shadow: 0 0 12px var(--cyan);
+}
+#load-msg {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  color: rgba(255,255,255,0.25);
+}
+#start-btn {
+  padding: 12px 36px;
+  background: transparent;
+  border: 1px solid rgba(0,255,231,0.4);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: none;
+}
+#start-btn:hover {
+  background: rgba(0,255,231,0.08);
+  box-shadow: 0 0 20px rgba(0,255,231,0.2);
+}
+
+/* ── Nanopince HUD ── */
+#pincer-hud {
+  position: fixed;
+  bottom: 70px;
+  right: 20px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+#pincer-hud.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<video id="video-bg" autoplay muted playsinline></video>
+<div id="bg-overlay"></div>
+<canvas id="canvas"></canvas>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div id="logo">Nano<span>Lab</span> <span style="font-size:0.5rem;color:rgba(0,255,231,0.3);letter-spacing:0.2em;">v0.2</span></div>
+  <div id="topbar-right">
+    <div class="status-indicator"><div class="dot" id="dot-cam"></div><span id="txt-cam">CAM OFF</span></div>
+    <div class="status-indicator"><div class="dot" id="dot-hand"></div><span id="txt-hand">MAIN: —</span></div>
+    <div class="status-indicator" style="color:rgba(0,255,231,0.5)"><span id="txt-fps">— FPS</span></div>
+  </div>
+</div>
+
+<!-- Left panel -->
+<div class="hud-panel" id="panel-gesture">
+  <div class="panel-title">// GESTE DÉTECTÉ</div>
+  <div id="gesture-name">—</div>
+  <div id="gesture-desc">Aucune main détectée</div>
+  <hr class="divider"/>
+  <div class="label-row"><span class="key">POSITION X</span><span class="val" id="pos-x">—</span></div>
+  <div class="label-row"><span class="key">POSITION Y</span><span class="val" id="pos-y">—</span></div>
+  <div class="label-row"><span class="key">CONFIANCE</span><span class="val" id="conf">—</span></div>
+  <hr class="divider"/>
+  <div class="label-row"><span class="key">OBJET SAISI</span><span class="val" id="grabbed">AUCUN</span></div>
+</div>
+
+<!-- Right panel -->
+<div class="hud-panel" id="panel-molecule">
+  <div class="panel-title">// MOLÉCULE</div>
+  <div id="mol-name">C60 Fullerène</div>
+  <div id="mol-formula">C₆₀ · Ø ~0.7nm</div>
+  <div id="mol-desc">Molécule sphérique de 60 atomes de carbone. Structure en cage — base des nanotechnologies.</div>
+  <hr class="divider"/>
+  <div style="margin-bottom:6px;font-size:0.58rem;color:rgba(0,255,231,0.4);letter-spacing:0.15em;">CHOISIR :</div>
+  <div>
+    <div class="mol-btn active" onclick="selectMol('c60')">C60</div>
+    <div class="mol-btn" onclick="selectMol('graphene')">GRAPHÈNE</div>
+    <div class="mol-btn" onclick="selectMol('nanotube')">NANOTUBE</div>
+    <div class="mol-btn" onclick="selectMol('diamond')">DIAMANT</div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="hud-panel" id="panel-legend">
+  <div><span>✋ MAIN PLATE</span> — Attraper</div>
+  <div><span>✊ POING</span> — Relâcher</div>
+  <div><span>☝️ POINTER</span> — Inspecter</div>
+  <div><span>↕ DÉPLACER</span> — Déplacer</div>
+</div>
+
+<!-- Loading -->
+<div id="loading">
+  <div id="load-title">NANOLAB</div>
+  <div id="load-sub">GESTURE MOLECULAR INTERFACE</div>
+  <div id="load-bar-wrap"><div id="load-bar"></div></div>
+  <div id="load-msg">Initialisation...</div>
+  <button id="start-btn" onclick="startCamera()">⬡ ACTIVER LA CAMÉRA</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const videoBg = document.getElementById('video-bg');
+
+let W, H, frameCount = 0, lastFpsTime = 0, fps = 0;
+let handPresent = false, gesture = 'none', lastGesture = 'none';
+let handX = 0, handY = 0;
+let grabbedMol = null;
+let currentMolType = 'c60';
+let camReady = false;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ══════════════════════════════════════════════════════
+//  MOLECULE DATA
+// ══════════════════════════════════════════════════════
+const MOL_INFO = {
+  c60: { name: 'C60 Fullerène', formula: 'C₆₀ · Ø ~0.7nm', desc: 'Molécule sphérique de 60 atomes de carbone. Structure en cage — base des nanotechnologies.' },
+  graphene: { name: 'Graphène', formula: 'Cₙ · 2D', desc: 'Feuillet monoatomique de carbone en réseau hexagonal. Le matériau le plus résistant connu.' },
+  nanotube: { name: 'Nanotube de Carbone', formula: 'SWCNT · Ø ~1nm', desc: 'Graphène enroulé en cylindre. Conducteur électrique exceptionnel et ultra-résistant.' },
+  diamond: { name: 'Diamant (cellule)', formula: 'C (cubique) · a=0.357nm', desc: 'Structure tétraédrique sp³. Matériau le plus dur — candidat pour les nanopinces rigides.' },
+};
+
+function selectMol(type) {
+  currentMolType = type;
+  document.querySelectorAll('.mol-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  const info = MOL_INFO[type];
+  document.getElementById('mol-name').textContent = info.name;
+  document.getElementById('mol-formula').textContent = info.formula;
+  document.getElementById('mol-desc').textContent = info.desc;
+  // Replace molecules on screen
+  spawnMolecules();
+}
+
+// ══════════════════════════════════════════════════════
+//  3D MOLECULE RENDERERS (Canvas 2D projection)
+// ══════════════════════════════════════════════════════
+class Molecule {
+  constructor(x, y, type) {
+    this.x = x; this.y = y;
+    this.type = type;
+    this.rotX = Math.random() * Math.PI * 2;
+    this.rotY = Math.random() * Math.PI * 2;
+    this.rotZ = 0;
+    this.rotSpeedX = (Math.random() - 0.5) * 0.008;
+    this.rotSpeedY = (Math.random() - 0.5) * 0.012;
+    this.scale = 1;
+    this.grabbed = false;
+    this.hover = false;
+    this.alpha = 0;
+    this.glowPhase = Math.random() * Math.PI * 2;
+    this.id = Math.random();
+    // Generate geometry
+    this.atoms = [];
+    this.bonds = [];
+    this._buildGeometry();
+  }
+
+  _buildGeometry() {
+    if (this.type === 'c60') this._buildC60();
+    else if (this.type === 'graphene') this._buildGraphene();
+    else if (this.type === 'nanotube') this._buildNanotube();
+    else if (this.type === 'diamond') this._buildDiamond();
+  }
+
+  _buildC60() {
+    // Icosahedron truncated (simplified C60 positions)
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const r = 55;
+    const verts = [];
+
+    // 12 pentagon vertices
+    const ico = [
+      [0,1,phi],[0,-1,phi],[0,1,-phi],[0,-1,-phi],
+      [1,phi,0],[-1,phi,0],[1,-phi,0],[-1,-phi,0],
+      [phi,0,1],[phi,0,-1],[-phi,0,1],[-phi,0,-1]
+    ];
+    // Truncate: add midpoints along edges
+    const edges_ico = [
+      [0,1],[0,4],[0,5],[0,8],[0,10],
+      [1,6],[1,7],[1,8],[1,10],
+      [2,3],[2,4],[2,5],[2,9],[2,11],
+      [3,6],[3,7],[3,9],[3,11],
+      [4,5],[4,8],[4,9],
+      [5,10],[5,11],
+      [6,7],[6,8],[6,9],
+      [7,10],[7,11],
+      [8,9],[10,11]
+    ];
+
+    ico.forEach(v => {
+      const len = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+      verts.push([v[0]/len*r, v[1]/len*r, v[2]/len*r]);
+    });
+
+    edges_ico.forEach(([a,b]) => {
+      const va = verts[a], vb = verts[b];
+      const t1 = 1/3, t2 = 2/3;
+      const p1 = [va[0]+(vb[0]-va[0])*t1, va[1]+(vb[1]-va[1])*t1, va[2]+(vb[2]-va[2])*t1];
+      const p2 = [va[0]+(vb[0]-va[0])*t2, va[1]+(vb[1]-va[1])*t2, va[2]+(vb[2]-va[2])*t2];
+      const norm1 = Math.sqrt(p1[0]*p1[0]+p1[1]*p1[1]+p1[2]*p1[2]);
+      const norm2 = Math.sqrt(p2[0]*p2[0]+p2[1]*p2[1]+p2[2]*p2[2]);
+      const i1 = this.atoms.length;
+      this.atoms.push({ pos: [p1[0]/norm1*r, p1[1]/norm1*r, p1[2]/norm1*r], color: '#00ffe7' });
+      this.atoms.push({ pos: [p2[0]/norm2*r, p2[1]/norm2*r, p2[2]/norm2*r], color: '#00ffe7' });
+      this.bonds.push([i1, i1+1]);
+    });
+
+    // Connect nearby atoms
+    const n = this.atoms.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i+1; j < n; j++) {
+        const d = dist3(this.atoms[i].pos, this.atoms[j].pos);
+        if (d < r * 0.55 && d > 1) {
+          if (!this.bonds.find(b => (b[0]===i&&b[1]===j)||(b[0]===j&&b[1]===i)))
+            this.bonds.push([i, j]);
+        }
+      }
+    }
+  }
+
+  _buildGraphene() {
+    const r = 70;
+    const a = 22; // bond length
+    const cols = 5, rows = 4;
+    // Hexagonal grid
+    for (let row = -rows; row <= rows; row++) {
+      for (let col = -cols; col <= cols; col++) {
+        const x = col * a * 1.5;
+        const y = row * a * Math.sqrt(3) + (col % 2) * a * Math.sqrt(3) / 2;
+        const z = (Math.random() - 0.5) * 4; // slight z variation
+        const len = Math.sqrt(x*x+y*y+z*z);
+        if (len > r + 5) continue;
+        this.atoms.push({ pos: [x, y, z], color: '#00ffe7' });
+      }
+    }
+    // Connect nearest neighbors
+    const n = this.atoms.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i+1; j < n; j++) {
+        const d = dist3(this.atoms[i].pos, this.atoms[j].pos);
+        if (d < a * 1.2) this.bonds.push([i, j]);
+      }
+    }
+  }
+
+  _buildNanotube() {
+    const radius = 28, length = 80;
+    const circumPoints = 12, lengthPoints = 10;
+    for (let l = 0; l < lengthPoints; l++) {
+      for (let c = 0; c < circumPoints; c++) {
+        const angle = (c / circumPoints) * Math.PI * 2 + (l % 2) * Math.PI / circumPoints;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const y = (l / (lengthPoints - 1) - 0.5) * length * 2;
+        this.atoms.push({ pos: [x, y, z], color: '#00ffe7' });
+      }
+    }
+    const n = this.atoms.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i+1; j < n; j++) {
+        const d = dist3(this.atoms[i].pos, this.atoms[j].pos);
+        if (d < radius * 0.8) this.bonds.push([i, j]);
+      }
+    }
+  }
+
+  _buildDiamond() {
+    const a = 35; // lattice param
+    const r = 75;
+    const positions = [];
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+      positions.push([x*a, y*a, z*a]);
+      positions.push([x*a+a/2, y*a+a/2, z*a]);
+      positions.push([x*a+a/2, y*a, z*a+a/2]);
+      positions.push([x*a, y*a+a/2, z*a+a/2]);
+    }
+    positions.forEach(p => {
+      const len = Math.sqrt(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]);
+      if (len <= r) this.atoms.push({ pos: p, color: '#88aaff' });
+    });
+    const n = this.atoms.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i+1; j < n; j++) {
+        const d = dist3(this.atoms[i].pos, this.atoms[j].pos);
+        if (d < a * 0.95) this.bonds.push([i, j]);
+      }
+    }
+  }
+
+  project(pos) {
+    const [x, y, z] = pos;
+    // Rotate X
+    const cosX = Math.cos(this.rotX), sinX = Math.sin(this.rotX);
+    const y1 = y * cosX - z * sinX, z1 = y * sinX + z * cosX;
+    // Rotate Y
+    const cosY = Math.cos(this.rotY), sinY = Math.sin(this.rotY);
+    const x2 = x * cosY + z1 * sinY, z2 = -x * sinY + z1 * cosY;
+    // Rotate Z
+    const cosZ = Math.cos(this.rotZ), sinZ = Math.sin(this.rotZ);
+    const x3 = x2 * cosZ - y1 * sinZ, y3 = x2 * sinZ + y1 * cosZ;
+    const fov = 350;
+    const depth = fov / (fov + z2 + 200);
+    return { sx: x3 * depth * this.scale + this.x, sy: y3 * depth * this.scale + this.y, depth, z: z2 };
+  }
+
+  update() {
+    this.alpha = Math.min(1, this.alpha + 0.03);
+    this.glowPhase += 0.02;
+    if (!this.grabbed) {
+      this.rotX += this.rotSpeedX;
+      this.rotY += this.rotSpeedY;
+    } else {
+      this.rotY += 0.015;
+    }
+
+    // Hover / grab scale
+    const targetScale = this.grabbed ? 1.15 : this.hover ? 1.05 : 1;
+    this.scale += (targetScale - this.scale) * 0.1;
+  }
+
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+
+    // Glow aura
+    const glowR = 90 * this.scale + Math.sin(this.glowPhase) * 8;
+    const glowColor = this.grabbed ? 'rgba(0,255,136,' : this.hover ? 'rgba(255,170,0,' : 'rgba(0,255,231,';
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, glowR);
+    grad.addColorStop(0, glowColor + '0.1)');
+    grad.addColorStop(1, glowColor + '0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Project all atoms
+    const projected = this.atoms.map(a => ({ ...this.project(a.pos), color: a.color }));
+
+    // Sort bonds by depth (back to front)
+    const bondDepths = this.bonds.map(([i, j]) => ({
+      i, j,
+      depth: (projected[i].z + projected[j].z) / 2
+    })).sort((a, b) => a.depth - b.depth);
+
+    // Draw bonds
+    bondDepths.forEach(({ i, j, depth }) => {
+      const pa = projected[i], pb = projected[j];
+      const depthFactor = Math.max(0, Math.min(1, (depth + 200) / 400));
+      const col = this.grabbed ? '0,255,136' : '0,255,231';
+      ctx.save();
+      ctx.globalAlpha = this.alpha * (0.2 + depthFactor * 0.5);
+      ctx.strokeStyle = `rgba(${col},${0.6 + depthFactor * 0.4})`;
+      ctx.lineWidth = 0.8 + depthFactor * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(pa.sx, pa.sy);
+      ctx.lineTo(pb.sx, pb.sy);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Draw atoms (sorted front to back)
+    const sortedAtoms = projected.map((p, i) => ({ ...p, i })).sort((a, b) => a.z - b.z);
+    sortedAtoms.forEach(p => {
+      const depthFactor = Math.max(0, Math.min(1, (p.z + 200) / 400));
+      const r = (1.5 + depthFactor * 3) * this.scale;
+      const col = this.grabbed ? '0,255,136' : '0,200,255';
+      ctx.save();
+      ctx.globalAlpha = this.alpha * (0.4 + depthFactor * 0.6);
+      ctx.shadowBlur = 8 * depthFactor;
+      ctx.shadowColor = `rgba(${col},0.8)`;
+      ctx.fillStyle = `rgba(${col},${0.7 + depthFactor * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // Grab ring
+    if (this.grabbed) {
+      ctx.save();
+      ctx.globalAlpha = 0.6 + Math.sin(this.glowPhase * 2) * 0.2;
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 80 * this.scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  isNear(px, py) {
+    return Math.hypot(px - this.x, py - this.y) < 80 * this.scale;
+  }
+}
+
+function dist3(a, b) {
+  return Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2);
+}
+
+// ══════════════════════════════════════════════════════
+//  NANOPINCE
+// ══════════════════════════════════════════════════════
+class Nanopince {
+  constructor() {
+    this.x = W / 2; this.y = H / 2;
+    this.open = true;
+    this.openAmount = 1; // 0=closed, 1=open
+    this.alpha = 0;
+    this.active = false;
+    this.phase = 0;
+  }
+
+  update(hx, hy, isOpen) {
+    this.x += (hx - this.x) * 0.18;
+    this.y += (hy - this.y) * 0.18;
+    this.open = isOpen;
+    const target = isOpen ? 1 : 0;
+    this.openAmount += (target - this.openAmount) * 0.15;
+    this.alpha = Math.min(1, this.alpha + 0.06);
+    this.phase += 0.04;
+    this.active = true;
+  }
+
+  fadeOut() {
+    this.alpha -= 0.05;
+    this.active = false;
+  }
+
+  draw() {
+    if (this.alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = this.alpha * 0.85;
+
+    const openDist = 30 + this.openAmount * 28;
+    const armLen = 50;
+    const col = this.open ? 'rgba(0,255,136,' : 'rgba(255,60,80,';
+
+    // Draw two pincer arms
+    for (let side of [-1, 1]) {
+      const tipX = this.x + side * openDist;
+      const tipY = this.y;
+      const baseX = this.x + side * 14;
+      const baseY = this.y - armLen;
+
+      ctx.save();
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = col + '0.8)';
+      ctx.strokeStyle = col + '0.9)';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+
+      // Arm shaft
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.quadraticCurveTo(this.x + side * (openDist * 0.6), this.y - armLen * 0.3, tipX, tipY);
+      ctx.stroke();
+
+      // Tip grip
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = col + '1)';
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // Center body
+    ctx.save();
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = col + '0.5)';
+    ctx.strokeStyle = col + '0.6)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(this.x - 12, this.y - armLen);
+    ctx.lineTo(this.x + 12, this.y - armLen);
+    ctx.stroke();
+    // vertical shaft
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y - armLen);
+    ctx.lineTo(this.x, this.y - armLen - 18);
+    ctx.stroke();
+    ctx.restore();
+
+    // Status ring at tip
+    ctx.save();
+    const ringR = 8 + Math.sin(this.phase * 3) * 2;
+    ctx.globalAlpha = this.alpha * (0.3 + Math.sin(this.phase * 2) * 0.15);
+    ctx.strokeStyle = col + '0.8)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  PARTICLES
+// ══════════════════════════════════════════════════════
+class Particle {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    const a = Math.random() * Math.PI * 2;
+    const s = Math.random() * 3 + 0.5;
+    this.vx = Math.cos(a) * s; this.vy = Math.sin(a) * s;
+    this.r = Math.random() * 2 + 1;
+    this.alpha = 0.8;
+    this.color = ['#00ffe7','#0066ff','#00ff88','#ffffff'][Math.floor(Math.random()*4)];
+    this.alive = true;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    this.vy += 0.05;
+    this.alpha -= 0.018;
+    if (this.alpha <= 0) this.alive = false;
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.shadowBlur = 8; ctx.shadowColor = this.color;
+    ctx.fillStyle = this.color;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  SCENE
+// ══════════════════════════════════════════════════════
+let molecules = [];
+let particles = [];
+const pincer = new Nanopince();
+
+function spawnMolecules() {
+  molecules = [];
+  const count = 3;
+  for (let i = 0; i < count; i++) {
+    const x = W * 0.2 + (W * 0.6) * (i / (count - 1));
+    const y = H * 0.5 + (Math.random() - 0.5) * H * 0.25;
+    molecules.push(new Molecule(x, y, currentMolType));
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  GESTURE DETECTION
+// ══════════════════════════════════════════════════════
+function detectGesture(lm) {
+  const fingers = [[8,6],[12,10],[16,14],[20,18]];
+  let extended = 0;
+  for (const [tip, pip] of fingers) {
+    if (lm[tip].y < lm[pip].y) extended++;
+  }
+  if (extended === 0) return 'closed';
+  if (extended >= 3) return 'open';
+  return 'pointing';
+}
+
+// ══════════════════════════════════════════════════════
+//  MEDIAPIPE
+// ══════════════════════════════════════════════════════
+let hands;
+function initHands() {
+  hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+  hands.onResults(onResults);
+}
+
+function onResults(results) {
+  if (results.multiHandLandmarks?.length) {
+    const lm = results.multiHandLandmarks[0];
+    handPresent = true;
+    gesture = detectGesture(lm);
+
+    // Mirror X (camera mirrored)
+    handX = (1 - lm[9].x) * W;
+    handY = lm[9].y * H;
+
+    // Update UI
+    document.getElementById('dot-hand').className = 'dot on';
+    document.getElementById('txt-hand').textContent = gesture === 'open' ? 'MAIN: OUVERTE' : gesture === 'closed' ? 'MAIN: POING' : 'MAIN: POINTER';
+    document.getElementById('gesture-name').textContent = gesture === 'open' ? '✋ Main ouverte' : gesture === 'closed' ? '✊ Poing fermé' : '☝️ Pointage';
+    document.getElementById('gesture-desc').textContent = gesture === 'open' ? 'Attrape la molécule proche' : gesture === 'closed' ? 'Relâche / Propulse' : 'Inspecte la structure';
+    document.getElementById('pos-x').textContent = Math.round(handX);
+    document.getElementById('pos-y').textContent = Math.round(handY);
+    document.getElementById('conf').textContent = '97%';
+
+    // Grab / release logic
+    if (gesture === 'open') {
+      if (!grabbedMol) {
+        molecules.forEach(m => {
+          m.hover = m.isNear(handX, handY);
+        });
+        const closest = molecules.filter(m => m.isNear(handX, handY))[0];
+        if (closest) { closest.grabbed = true; grabbedMol = closest; }
+      }
+      if (grabbedMol) {
+        grabbedMol.x += (handX - grabbedMol.x) * 0.2;
+        grabbedMol.y += (handY - grabbedMol.y) * 0.2;
+        document.getElementById('grabbed').textContent = MOL_INFO[currentMolType].name.toUpperCase();
+      }
+    }
+
+    if (gesture === 'closed' && grabbedMol) {
+      // Release with small burst
+      for (let i = 0; i < 20; i++) particles.push(new Particle(grabbedMol.x, grabbedMol.y));
+      grabbedMol.grabbed = false;
+      grabbedMol = null;
+      document.getElementById('grabbed').textContent = 'AUCUN';
+    }
+
+    // Gesture change burst
+    if (gesture !== lastGesture) {
+      lastGesture = gesture;
+      for (let i = 0; i < 12; i++) particles.push(new Particle(handX, handY));
+    }
+
+    // Pincer
+    pincer.update(handX, handY, gesture === 'open');
+
+  } else {
+    handPresent = false;
+    gesture = 'none';
+    document.getElementById('dot-hand').className = 'dot warn';
+    document.getElementById('txt-hand').textContent = 'MAIN: —';
+    document.getElementById('gesture-name').textContent = '—';
+    document.getElementById('gesture-desc').textContent = 'Aucune main détectée';
+    if (grabbedMol) { grabbedMol.grabbed = false; grabbedMol = null; }
+    pincer.fadeOut();
+    molecules.forEach(m => m.hover = false);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER LOOP
+// ══════════════════════════════════════════════════════
+function drawGrid() {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,255,231,0.04)';
+  ctx.lineWidth = 1;
+  const step = 60;
+  for (let x = 0; x < W; x += step) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += step) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function loop() {
+  frameCount++;
+
+  // FPS
+  const now = performance.now();
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frameCount * 1000 / (now - (lastFpsTime || now - 500)));
+    frameCount = 0; lastFpsTime = now;
+    document.getElementById('txt-fps').textContent = fps + ' FPS';
+  }
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  drawGrid();
+
+  // Molecules
+  molecules.forEach(m => { m.update(); m.draw(); });
+
+  // Particles
+  particles.forEach(p => { p.update(); p.draw(); });
+  particles = particles.filter(p => p.alive);
+
+  // Pincer
+  pincer.draw();
+
+  requestAnimationFrame(loop);
+}
+
+// ══════════════════════════════════════════════════════
+//  CAMERA INIT
+// ══════════════════════════════════════════════════════
+async function startCamera() {
+  document.getElementById('start-btn').style.display = 'none';
+  setLoad('Accès caméra...', 25);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
+    videoBg.srcObject = stream;
+    await videoBg.play();
+    videoBg.classList.add('visible');
+    document.getElementById('dot-cam').className = 'dot on';
+    document.getElementById('txt-cam').textContent = 'CAM ON';
+    setLoad('Chargement MediaPipe...', 55);
+    initHands();
+    const camera = new Camera(videoBg, {
+      onFrame: async () => { await hands.send({ image: videoBg }); },
+      width: 1280, height: 720,
+    });
+    setLoad('Démarrage...', 85);
+    await camera.start();
+    setLoad('Prêt !', 100);
+    setTimeout(() => {
+      document.getElementById('loading').classList.add('hidden');
+    }, 700);
+  } catch (e) {
+    document.getElementById('load-msg').textContent = 'Erreur : ' + e.message;
+    document.getElementById('load-msg').style.color = '#ff3355';
+    document.getElementById('start-btn').style.display = 'inline-block';
+    document.getElementById('start-btn').textContent = '↺ RÉESSAYER';
+  }
+}
+
+function setLoad(msg, pct) {
+  document.getElementById('load-msg').textContent = msg;
+  document.getElementById('load-bar').style.width = pct + '%';
+}
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  spawnMolecules();
+  loop();
+  setLoad('Prêt à démarrer', 18);
+  setTimeout(() => {
+    document.getElementById('start-btn').style.display = 'inline-block';
+  }, 800);
+});
+</script>
+</body>
+</html>

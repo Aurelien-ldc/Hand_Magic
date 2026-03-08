@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NanoLab v0.3</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --cyan:#00ffe7;--blue:#0066ff;--green:#00ff88;
+  --warn:#ffaa00;--red:#ff3355;--orange:#ff6600;
+  --bg-overlay:rgba(2,8,20,0.52);
+  --panel:rgba(0,20,40,0.78);
+  --border:rgba(0,255,231,0.2);
+  --font-mono:'Share Tech Mono',monospace;
+  --font-ui:'Exo 2',sans-serif;
+}
+body{background:#020814;color:#fff;font-family:var(--font-ui);overflow:hidden;width:100vw;height:100vh;cursor:none}
+#video-bg{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);z-index:0;opacity:0;transition:opacity 1s}
+#video-bg.visible{opacity:1}
+#bg-overlay{position:fixed;inset:0;background:var(--bg-overlay);z-index:1;pointer-events:none}
+#bg-overlay::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.03) 0px,rgba(0,0,0,0.03) 1px,transparent 1px,transparent 3px);pointer-events:none}
+#canvas{position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
+.hud-panel{position:fixed;z-index:10;background:var(--panel);border:1px solid var(--border);border-radius:8px;backdrop-filter:blur(12px);padding:14px 18px;font-family:var(--font-mono);font-size:.7rem;color:var(--cyan);letter-spacing:.1em;box-shadow:0 0 30px rgba(0,255,231,.05),inset 0 1px 0 rgba(255,255,255,.05)}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:10;height:52px;background:rgba(2,8,20,.88);border-bottom:1px solid var(--border);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+#logo{font-family:var(--font-ui);font-weight:800;font-size:1.1rem;letter-spacing:.3em;text-transform:uppercase;color:var(--cyan);text-shadow:0 0 20px rgba(0,255,231,.5)}
+#logo span{color:rgba(255,255,255,.4);font-weight:300}
+#topbar-right{display:flex;align-items:center;gap:24px;font-family:var(--font-mono);font-size:.65rem;color:rgba(255,255,255,.4);letter-spacing:.12em}
+.status-indicator{display:flex;align-items:center;gap:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:#333;transition:all .3s}
+.dot.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s ease-in-out infinite}
+.dot.warn{background:var(--warn);box-shadow:0 0 8px var(--warn);animation:blink .6s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+#panel-gesture{left:20px;top:72px;width:205px}
+.panel-title{font-size:.58rem;color:rgba(0,255,231,.5);letter-spacing:.2em;margin-bottom:12px;text-transform:uppercase}
+#gesture-name{font-size:1.05rem;font-weight:600;font-family:var(--font-ui);color:#fff;min-height:1.4em;margin-bottom:6px;transition:all .2s}
+#gesture-desc{font-size:.58rem;color:rgba(255,255,255,.4);line-height:1.6;min-height:2.5em}
+.divider{border:none;border-top:1px solid var(--border);margin:10px 0}
+.label-row{display:flex;justify-content:space-between;margin-bottom:5px;font-size:.58rem}
+.label-row .key{color:rgba(0,255,231,.5)}
+.label-row .val{color:rgba(255,255,255,.7)}
+#panel-molecule{right:20px;top:72px;width:215px}
+#mol-name{font-family:var(--font-ui);font-size:1rem;font-weight:600;color:#fff;margin-bottom:4px}
+#mol-formula{font-size:.75rem;color:var(--cyan);margin-bottom:10px}
+#mol-desc{font-size:.58rem;color:rgba(255,255,255,.4);line-height:1.6}
+.mol-btn{display:inline-block;margin:3px 3px 0 0;padding:4px 10px;background:rgba(0,255,231,.05);border:1px solid rgba(0,255,231,.2);border-radius:3px;font-family:var(--font-mono);font-size:.55rem;color:var(--cyan);cursor:pointer;transition:all .2s;letter-spacing:.1em}
+.mol-btn:hover,.mol-btn.active{background:rgba(0,255,231,.15);border-color:var(--cyan);box-shadow:0 0 10px rgba(0,255,231,.2)}
+.mol-btn.co2b{color:#ff8844;border-color:rgba(255,136,68,.3)}
+.mol-btn.co2b.active,.mol-btn.co2b:hover{background:rgba(255,136,68,.12);border-color:#ff8844;box-shadow:0 0 10px rgba(255,136,68,.2)}
+#panel-zoom{left:20px;bottom:80px;width:205px}
+#zoom-bar-wrap{width:100%;height:4px;background:rgba(255,255,255,.08);border-radius:2px;margin:8px 0 4px}
+#zoom-bar{height:100%;width:19%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:2px;transition:width .1s;box-shadow:0 0 8px var(--cyan)}
+#zoom-val{font-size:.9rem;color:#fff;font-family:var(--font-ui);font-weight:600}
+#panel-legend{bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:18px;background:rgba(2,8,20,.85);border:1px solid var(--border);padding:10px 20px;border-radius:30px;font-size:.55rem;letter-spacing:.1em;color:rgba(255,255,255,.4);white-space:nowrap}
+#panel-legend span{color:var(--cyan)}
+#panel-legend .sp-o{color:#ff8844}
+#crush-flash{position:fixed;inset:0;z-index:50;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(255,100,0,.45),transparent 70%);transition:opacity .1s}
+#loading{position:fixed;inset:0;z-index:100;background:#020814;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;transition:opacity .8s}
+#loading.hidden{opacity:0;pointer-events:none}
+#load-title{font-family:var(--font-ui);font-weight:800;font-size:clamp(1.5rem,4vw,2.8rem);letter-spacing:.4em;text-transform:uppercase;color:var(--cyan);text-shadow:0 0 30px rgba(0,255,231,.6)}
+#load-sub{font-family:var(--font-mono);font-size:.65rem;letter-spacing:.2em;color:rgba(255,255,255,.3)}
+#load-bar-wrap{width:300px;height:2px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+#load-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width .4s;box-shadow:0 0 12px var(--cyan)}
+#load-msg{font-family:var(--font-mono);font-size:.6rem;letter-spacing:.15em;color:rgba(255,255,255,.25)}
+#start-btn{padding:12px 36px;background:transparent;border:1px solid rgba(0,255,231,.4);color:var(--cyan);font-family:var(--font-mono);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;border-radius:4px;transition:all .2s;display:none}
+#start-btn:hover{background:rgba(0,255,231,.08);box-shadow:0 0 20px rgba(0,255,231,.2)}
+#crush-notif{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(255,80,0,.15);border:1px solid rgba(255,100,0,.5);border-radius:8px;padding:10px 24px;font-family:var(--font-mono);font-size:.7rem;color:#ff8844;letter-spacing:.15em;opacity:0;pointer-events:none;transition:opacity .3s;text-align:center;white-space:nowrap}
+#crush-notif.show{opacity:1}
+</style>
+</head>
+<body>
+
+<video id="video-bg" autoplay muted playsinline></video>
+<div id="bg-overlay"></div>
+<canvas id="canvas"></canvas>
+<div id="crush-flash"></div>
+<div id="crush-notif">💥 CO₂ BROYÉ → NANOTUBE / GRAPHÈNE CRÉÉ</div>
+
+<div id="topbar">
+  <div id="logo">Nano<span>Lab</span> <span style="font-size:.5rem;color:rgba(0,255,231,.3);letter-spacing:.2em;">v0.3</span></div>
+  <div id="topbar-right">
+    <div class="status-indicator"><div class="dot" id="dot-cam"></div><span id="txt-cam">CAM OFF</span></div>
+    <div class="status-indicator"><div class="dot" id="dot-hand"></div><span id="txt-hand">MAIN: —</span></div>
+    <div class="status-indicator" style="color:rgba(0,255,231,.5)"><span id="txt-fps">— FPS</span></div>
+  </div>
+</div>
+
+<div class="hud-panel" id="panel-gesture">
+  <div class="panel-title">// GESTE DÉTECTÉ</div>
+  <div id="gesture-name">—</div>
+  <div id="gesture-desc">Aucune main détectée</div>
+  <hr class="divider"/>
+  <div class="label-row"><span class="key">POSITION X</span><span class="val" id="pos-x">—</span></div>
+  <div class="label-row"><span class="key">POSITION Y</span><span class="val" id="pos-y">—</span></div>
+  <div class="label-row"><span class="key">ZOOM</span><span class="val" id="zoom-pct">1.0×</span></div>
+  <hr class="divider"/>
+  <div class="label-row"><span class="key">OBJET SAISI</span><span class="val" id="grabbed">AUCUN</span></div>
+</div>
+
+<div class="hud-panel" id="panel-molecule">
+  <div class="panel-title">// MOLÉCULE ACTIVE</div>
+  <div id="mol-name">CO₂</div>
+  <div id="mol-formula">CO₂ · L ~0.23nm</div>
+  <div id="mol-desc">Cible principale de la nanopince. Attrape avec le poing, puis ouvre la main pour broyer et créer graphène ou nanotube.</div>
+  <hr class="divider"/>
+  <div style="margin-bottom:6px;font-size:.55rem;color:rgba(0,255,231,.4);letter-spacing:.15em;">CHOISIR :</div>
+  <div>
+    <div class="mol-btn co2b active" onclick="selectMol('co2',this)">CO₂</div>
+    <div class="mol-btn" onclick="selectMol('c60',this)">C60</div>
+    <div class="mol-btn" onclick="selectMol('graphene',this)">GRAPHÈNE</div>
+    <div class="mol-btn" onclick="selectMol('nanotube',this)">NANOTUBE</div>
+    <div class="mol-btn" onclick="selectMol('diamond',this)">DIAMANT</div>
+  </div>
+</div>
+
+<div class="hud-panel" id="panel-zoom">
+  <div class="panel-title">// ZOOM MOLÉCULAIRE</div>
+  <div id="zoom-val">1.0×</div>
+  <div id="zoom-bar-wrap"><div id="zoom-bar"></div></div>
+  <div style="font-size:.55rem;color:rgba(255,255,255,.3);">✌️ Pincer index+pouce = zoom</div>
+</div>
+
+<div class="hud-panel" id="panel-legend">
+  <div><span>✊ POING</span> Attraper</div>
+  <div><span>✋ OUVERT</span> Lâcher/Broyer</div>
+  <div><span class="sp-o">✊→✋ CO₂</span> → C nanomat.</div>
+  <div><span>✌️ PINCH</span> Zoom ±</div>
+</div>
+
+<div id="loading">
+  <div id="load-title">NANOLAB</div>
+  <div id="load-sub">GESTURE MOLECULAR INTERFACE · v0.3</div>
+  <div id="load-bar-wrap"><div id="load-bar"></div></div>
+  <div id="load-msg">Initialisation...</div>
+  <button id="start-btn" onclick="startCamera()">⬡ ACTIVER LA CAMÉRA</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script>
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const videoBg=document.getElementById('video-bg');
+let W,H,frameCount=0,lastFpsTime=0;
+let handPresent=false,gesture='none',lastGesture='none';
+let handX=400,handY=300;
+let grabbedMol=null,currentMolType='co2';
+let globalZoom=1.0,targetZoom=1.0,zoomMode=false,lastPinchDist=null;
+
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+
+const MOL_INFO={
+  co2:{name:'CO₂',formula:'CO₂ · L ~0.23nm',desc:'Cible principale. Attrape avec le poing, ouvre la main pour broyer et créer du graphène ou nanotube.'},
+  c60:{name:'C60 Fullerène',formula:'C₆₀ · Ø ~0.7nm',desc:'Molécule sphérique de 60 atomes de carbone.'},
+  graphene:{name:'Graphène',formula:'Cₙ · 2D monocouche',desc:'Feuillet mono-atomique de carbone hexagonal.'},
+  nanotube:{name:'Nanotube de Carbone',formula:'SWCNT · Ø ~1nm',desc:'Graphène enroulé en cylindre. Conducteur exceptionnel.'},
+  diamond:{name:'Diamant (cellule)',formula:'C (cubique) · a=0.357nm',desc:'Structure tétraédrique sp³. Base des nanopinces rigides.'},
+};
+
+function selectMol(type,btn){
+  currentMolType=type;
+  document.querySelectorAll('.mol-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  const i=MOL_INFO[type];
+  document.getElementById('mol-name').textContent=i.name;
+  document.getElementById('mol-formula').textContent=i.formula;
+  document.getElementById('mol-desc').textContent=i.desc;
+  spawnMolecules();
+}
+
+function dist3(a,b){return Math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2)}
+function rnd(a,b){return a+Math.random()*(b-a)}
+function rndFrom(arr){return arr[Math.floor(Math.random()*arr.length)]}
+
+// ── MOLECULE ──────────────────────────────────────────
+class Molecule{
+  constructor(x,y,type){
+    this.x=x;this.y=y;this.type=type;
+    this.rotX=rnd(0,Math.PI*2);this.rotY=rnd(0,Math.PI*2);this.rotZ=0;
+    this.rotSpeedX=rnd(-.012,.012);this.rotSpeedY=rnd(-.016,.016);
+    this.scale=1;this.grabbed=false;this.hover=false;
+    this.alpha=0;this.glowPhase=rnd(0,Math.PI*2);
+    this.atoms=[];this.bonds=[];
+    this.crushing=false;this.crushTimer=0;this.alive=true;
+    this._build();
+  }
+  _build(){
+    this.atoms=[];this.bonds=[];
+    if(this.type==='co2')this._co2();
+    else if(this.type==='c60')this._c60();
+    else if(this.type==='graphene')this._graphene();
+    else if(this.type==='nanotube')this._nanotube();
+    else if(this.type==='diamond')this._diamond();
+  }
+  _co2(){
+    this.atoms.push({pos:[-52,0,0],color:'#ff5533',r:1.5,label:'O'});
+    this.atoms.push({pos:[0,0,0],color:'#cccccc',r:1.0,label:'C'});
+    this.atoms.push({pos:[52,0,0],color:'#ff5533',r:1.5,label:'O'});
+    this.bonds.push([0,1,true]);this.bonds.push([1,2,true]);
+  }
+  _c60(){
+    const phi=(1+Math.sqrt(5))/2,r=55;
+    const ico=[[0,1,phi],[0,-1,phi],[0,1,-phi],[0,-1,-phi],[1,phi,0],[-1,phi,0],[1,-phi,0],[-1,-phi,0],[phi,0,1],[phi,0,-1],[-phi,0,1],[-phi,0,-1]];
+    const edges=[[0,1],[0,4],[0,5],[0,8],[0,10],[1,6],[1,7],[1,8],[1,10],[2,3],[2,4],[2,5],[2,9],[2,11],[3,6],[3,7],[3,9],[3,11],[4,5],[4,8],[4,9],[5,10],[5,11],[6,7],[6,8],[6,9],[7,10],[7,11],[8,9],[10,11]];
+    const verts=ico.map(v=>{const l=Math.sqrt(v[0]**2+v[1]**2+v[2]**2);return[v[0]/l*r,v[1]/l*r,v[2]/l*r]});
+    edges.forEach(([a,b])=>{
+      const va=verts[a],vb=verts[b];
+      [1/3,2/3].forEach(t=>{
+        const p=[va[0]+(vb[0]-va[0])*t,va[1]+(vb[1]-va[1])*t,va[2]+(vb[2]-va[2])*t];
+        const n=Math.sqrt(p[0]**2+p[1]**2+p[2]**2);
+        this.atoms.push({pos:[p[0]/n*r,p[1]/n*r,p[2]/n*r],color:'#00ffe7',r:1,label:''});
+      });
+      const i=this.atoms.length-2;this.bonds.push([i,i+1,false]);
+    });
+    const n=this.atoms.length;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+      const d=dist3(this.atoms[i].pos,this.atoms[j].pos);
+      if(d<r*.55&&d>1&&!this.bonds.find(b=>(b[0]===i&&b[1]===j)||(b[0]===j&&b[1]===i)))
+        this.bonds.push([i,j,false]);
+    }
+  }
+  _graphene(){
+    const a=22,cols=5,rows=4,r=72;
+    for(let row=-rows;row<=rows;row++)for(let col=-cols;col<=cols;col++){
+      const x=col*a*1.5,y=row*a*Math.sqrt(3)+(col%2)*a*Math.sqrt(3)/2,z=rnd(-3,3);
+      if(Math.sqrt(x*x+y*y)>r+5)continue;
+      this.atoms.push({pos:[x,y,z],color:'#00ffe7',r:1,label:''});
+    }
+    const n=this.atoms.length;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)
+      if(dist3(this.atoms[i].pos,this.atoms[j].pos)<a*1.2)this.bonds.push([i,j,false]);
+  }
+  _nanotube(){
+    const radius=28,length=80,circ=12,lpts=10;
+    for(let l=0;l<lpts;l++)for(let c=0;c<circ;c++){
+      const angle=(c/circ)*Math.PI*2+(l%2)*Math.PI/circ;
+      this.atoms.push({pos:[Math.cos(angle)*radius,(l/(lpts-1)-.5)*length*2,Math.sin(angle)*radius],color:'#00ffe7',r:1,label:''});
+    }
+    const n=this.atoms.length;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)
+      if(dist3(this.atoms[i].pos,this.atoms[j].pos)<radius*.8)this.bonds.push([i,j,false]);
+  }
+  _diamond(){
+    const a=35,r=75,pos=[];
+    for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++)
+      [[0,0,0],[a/2,a/2,0],[a/2,0,a/2],[0,a/2,a/2]].forEach(([dx,dy,dz])=>pos.push([x*a+dx,y*a+dy,z*a+dz]));
+    pos.forEach(p=>{if(Math.sqrt(p[0]**2+p[1]**2+p[2]**2)<=r)this.atoms.push({pos:p,color:'#88aaff',r:1.1,label:''})});
+    const n=this.atoms.length;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)
+      if(dist3(this.atoms[i].pos,this.atoms[j].pos)<a*.95)this.bonds.push([i,j,false]);
+  }
+  project(pos){
+    let[x,y,z]=pos;
+    const cX=Math.cos(this.rotX),sX=Math.sin(this.rotX);
+    let y1=y*cX-z*sX,z1=y*sX+z*cX;
+    const cY=Math.cos(this.rotY),sY=Math.sin(this.rotY);
+    let x2=x*cY+z1*sY,z2=-x*sY+z1*cY;
+    const cZ=Math.cos(this.rotZ),sZ=Math.sin(this.rotZ);
+    let x3=x2*cZ-y1*sZ,y3=x2*sZ+y1*cZ;
+    const fov=350,depth=fov/(fov+z2+200);
+    const zs=globalZoom*this.scale;
+    return{sx:x3*depth*zs+this.x,sy:y3*depth*zs+this.y,depth,z:z2};
+  }
+  update(){
+    this.alpha=Math.min(1,this.alpha+.03);
+    this.glowPhase+=.02;
+    if(this.crushing){
+      this.crushTimer++;
+      this.scale=Math.max(.02,this.scale*.91);
+      this.rotSpeedX*=1.08;this.rotSpeedY*=1.08;
+      if(this.crushTimer>35)this.alive=false;
+    } else {
+      if(!this.grabbed){this.rotX+=this.rotSpeedX;this.rotY+=this.rotSpeedY;}
+      else this.rotY+=.015;
+      const ts=this.grabbed?1.15:this.hover?1.05:1;
+      this.scale+=(ts-this.scale)*.1;
+    }
+  }
+  draw(){
+    if(!this.alive)return;
+    ctx.save();ctx.globalAlpha=this.alpha;
+    const zs=globalZoom*this.scale;
+    const gr=90*zs+Math.sin(this.glowPhase)*8;
+    const gc=this.grabbed?'rgba(255,100,0,':'rgba(0,255,231,';
+    const grd=ctx.createRadialGradient(this.x,this.y,0,this.x,this.y,gr);
+    grd.addColorStop(0,gc+'.12)');grd.addColorStop(1,gc+'0)');
+    ctx.fillStyle=grd;ctx.beginPath();ctx.arc(this.x,this.y,gr,0,Math.PI*2);ctx.fill();
+    const proj=this.atoms.map(a=>({...this.project(a.pos),color:a.color,r:a.r,label:a.label}));
+    // bonds
+    this.bonds.map(([i,j,dbl])=>({i,j,dbl,depth:(proj[i].z+proj[j].z)/2}))
+      .sort((a,b)=>a.depth-b.depth)
+      .forEach(({i,j,dbl,depth})=>{
+        const pa=proj[i],pb=proj[j];
+        const df=Math.max(0,Math.min(1,(depth+200)/400));
+        const col=this.grabbed?'255,100,0':'0,255,231';
+        if(dbl){
+          const dx=pb.sx-pa.sx,dy=pb.sy-pa.sy,len=Math.sqrt(dx*dx+dy*dy)||1;
+          const ox=(-dy/len)*4,oy=(dx/len)*4;
+          [[ox,oy],[-ox,-oy]].forEach(([ox2,oy2])=>{
+            ctx.save();ctx.globalAlpha=this.alpha*(.3+df*.5);
+            ctx.strokeStyle=`rgba(${col},.9)`;ctx.lineWidth=1.5;
+            ctx.beginPath();ctx.moveTo(pa.sx+ox2,pa.sy+oy2);ctx.lineTo(pb.sx+ox2,pb.sy+oy2);ctx.stroke();ctx.restore();
+          });
+        } else {
+          ctx.save();ctx.globalAlpha=this.alpha*(.25+df*.5);
+          ctx.strokeStyle=`rgba(${col},.7)`;ctx.lineWidth=.8+df*.8;
+          ctx.beginPath();ctx.moveTo(pa.sx,pa.sy);ctx.lineTo(pb.sx,pb.sy);ctx.stroke();ctx.restore();
+        }
+      });
+    // atoms
+    proj.map((p,i)=>({...p,i})).sort((a,b)=>a.z-b.z).forEach(p=>{
+      const df=Math.max(0,Math.min(1,(p.z+200)/400));
+      const atomR=(p.r||1)*((this.type==='co2'?8:2.5)+df*2)*zs;
+      ctx.save();ctx.globalAlpha=this.alpha*(.45+df*.55);
+      ctx.shadowBlur=12*df;ctx.shadowColor=p.color;
+      ctx.fillStyle=p.color;
+      ctx.beginPath();ctx.arc(p.sx,p.sy,atomR,0,Math.PI*2);ctx.fill();
+      if(this.type==='co2'&&p.label&&zs>.4){
+        ctx.globalAlpha=this.alpha*.95;
+        ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(8,Math.round(atomR*.85))}px Exo 2,sans-serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(p.label,p.sx,p.sy);
+      }
+      ctx.restore();
+    });
+    if(this.grabbed){
+      ctx.save();ctx.globalAlpha=.45+Math.sin(this.glowPhase*2)*.2;
+      ctx.strokeStyle='#ff6600';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.arc(this.x,this.y,75*zs,0,Math.PI*2);ctx.stroke();ctx.restore();
+    }
+    ctx.restore();
+  }
+  isNear(px,py){return Math.hypot(px-this.x,py-this.y)<88*globalZoom*this.scale;}
+}
+
+// ── NANOPINCE ─────────────────────────────────────────
+class Nanopince{
+  constructor(){this.x=400;this.y=300;this.open=false;this.openAmount=0;this.alpha=0;this.phase=0;}
+  update(hx,hy,isOpen){
+    this.x+=(hx-this.x)*.18;this.y+=(hy-this.y)*.18;
+    this.open=isOpen;
+    this.openAmount+=(isOpen?1:0-this.openAmount)*.15;
+    this.alpha=Math.min(1,this.alpha+.06);this.phase+=.04;
+  }
+  fadeOut(){this.alpha-=.05;}
+  draw(){
+    if(this.alpha<=0)return;
+    ctx.save();ctx.globalAlpha=this.alpha*.9;
+    const od=28+this.openAmount*30,al=52;
+    const col=this.open?'rgba(0,255,136,':'rgba(255,80,0,';
+    for(const side of[-1,1]){
+      ctx.save();ctx.shadowBlur=15;ctx.shadowColor=col+'0.8)';
+      ctx.strokeStyle=col+'0.9)';ctx.lineWidth=2;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(this.x+side*14,this.y-al);
+      ctx.quadraticCurveTo(this.x+side*od*.6,this.y-al*.3,this.x+side*od,this.y);ctx.stroke();
+      ctx.beginPath();ctx.arc(this.x+side*od,this.y,4,0,Math.PI*2);
+      ctx.fillStyle=col+'1)';ctx.fill();ctx.restore();
+    }
+    ctx.save();ctx.shadowBlur=20;ctx.shadowColor=col+'0.5)';
+    ctx.strokeStyle=col+'0.6)';ctx.lineWidth=3;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(this.x-12,this.y-al);ctx.lineTo(this.x+12,this.y-al);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(this.x,this.y-al);ctx.lineTo(this.x,this.y-al-18);ctx.stroke();
+    ctx.restore();
+    ctx.save();ctx.globalAlpha=this.alpha*(.3+Math.sin(this.phase*2)*.15);
+    ctx.strokeStyle=col+'0.8)';ctx.lineWidth=1;ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.arc(this.x,this.y,10+Math.sin(this.phase*3)*2,0,Math.PI*2);ctx.stroke();
+    ctx.restore();ctx.restore();
+  }
+}
+
+// ── PARTICLE ──────────────────────────────────────────
+class Particle{
+  constructor(x,y,color,speed,big){
+    this.x=x;this.y=y;
+    const a=Math.random()*Math.PI*2,s=(speed||3)*(Math.random()+.4);
+    this.vx=Math.cos(a)*s;this.vy=Math.sin(a)*s;
+    this.r=big?rnd(3,7):rnd(1,3);
+    this.alpha=.9;this.decay=rnd(.012,.026);
+    this.color=color||rndFrom(['#00ffe7','#0066ff','#00ff88','#ffffff']);
+    this.alive=true;
+  }
+  update(){this.x+=this.vx;this.y+=this.vy;this.vy+=.07;this.alpha-=this.decay;if(this.alpha<=0)this.alive=false;}
+  draw(){
+    ctx.save();ctx.globalAlpha=this.alpha;
+    ctx.shadowBlur=8;ctx.shadowColor=this.color;ctx.fillStyle=this.color;
+    ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+}
+
+// ── CRUSH CO2 ─────────────────────────────────────────
+function crushCO2(mol){
+  for(let i=0;i<45;i++)particles.push(new Particle(mol.x,mol.y,'#ff4444',14,true));
+  for(let i=0;i<35;i++)particles.push(new Particle(mol.x,mol.y,'#ff8800',11,false));
+  for(let i=0;i<25;i++)particles.push(new Particle(mol.x,mol.y,'#cccccc',9,false));
+  const fl=document.getElementById('crush-flash');
+  fl.style.opacity='.75';setTimeout(()=>fl.style.opacity='0',130);
+  const notif=document.getElementById('crush-notif');
+  notif.classList.add('show');setTimeout(()=>notif.classList.remove('show'),2800);
+  setTimeout(()=>{
+    const type=Math.random()<.5?'nanotube':'graphene';
+    const nm=new Molecule(mol.x+rnd(-90,90),mol.y+rnd(-70,70),type);
+    molecules.push(nm);
+    for(let i=0;i<30;i++)particles.push(new Particle(nm.x,nm.y,'#00ff88',9,false));
+    const info=MOL_INFO[type];
+    document.getElementById('mol-name').textContent=info.name;
+    document.getElementById('mol-formula').textContent=info.formula;
+    document.getElementById('mol-desc').textContent=info.desc;
+    currentMolType=type;
+  },650);
+  mol.crushing=true;
+}
+
+// ── SCENE ─────────────────────────────────────────────
+let molecules=[],particles=[];
+const pincer=new Nanopince();
+
+function spawnMolecules(){
+  molecules=[];
+  for(let i=0;i<3;i++){
+    const x=W*.2+(W*.6)*(i/2);
+    const y=H*.5+rnd(-H*.2,H*.2);
+    molecules.push(new Molecule(x,y,currentMolType));
+  }
+}
+
+// ── GESTURE ───────────────────────────────────────────
+function detectGesture(lm){
+  const f=[[8,6],[12,10],[16,14],[20,18]];
+  let ext=0;
+  for(const[t,p]of f)if(lm[t].y<lm[p].y)ext++;
+  if(ext===0)return 'closed';
+  if(ext>=3)return 'open';
+  if(lm[8].y<lm[6].y&&lm[12].y<lm[10].y&&lm[16].y>lm[14].y)return 'pinch';
+  return 'pointing';
+}
+
+function getPinchDist(lm){
+  return Math.hypot(lm[8].x-lm[4].x,lm[8].y-lm[4].y)*W;
+}
+
+// ── MEDIAPIPE ─────────────────────────────────────────
+let hands;
+function initHands(){
+  hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+  hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:.7,minTrackingConfidence:.6});
+  hands.onResults(onResults);
+}
+
+function onResults(results){
+  if(results.multiHandLandmarks?.length){
+    const lm=results.multiHandLandmarks[0];
+    handPresent=true;
+    gesture=detectGesture(lm);
+    handX=(1-lm[9].x)*W;handY=lm[9].y*H;
+
+    // ZOOM
+    if(gesture==='pinch'){
+      const pd=getPinchDist(lm);
+      if(lastPinchDist!==null){
+        const delta=(pd-lastPinchDist)/100;
+        targetZoom=Math.max(.3,Math.min(4.5,targetZoom+delta));
+      }
+      lastPinchDist=pd;zoomMode=true;
+    } else {lastPinchDist=null;zoomMode=false;}
+    globalZoom+=(targetZoom-globalZoom)*.08;
+
+    // UI updates
+    const gn={closed:'✊ Poing fermé',open:'✋ Main ouverte',pinch:'✌️ Zoom actif',pointing:'☝️ Pointage'};
+    const gd={closed:'Attrape la molécule proche',open:'Relâche — ou broie le CO₂ !',pinch:'Rapproche les doigts = zoom avant',pointing:'Inspection de la structure'};
+    document.getElementById('dot-hand').className='dot on';
+    document.getElementById('txt-hand').textContent='MAIN: '+gesture.toUpperCase();
+    document.getElementById('gesture-name').textContent=gn[gesture]||'—';
+    document.getElementById('gesture-desc').textContent=gd[gesture]||'';
+    document.getElementById('pos-x').textContent=Math.round(handX);
+    document.getElementById('pos-y').textContent=Math.round(handY);
+    document.getElementById('zoom-pct').textContent=globalZoom.toFixed(2)+'×';
+    document.getElementById('zoom-val').textContent=globalZoom.toFixed(2)+'×';
+    document.getElementById('zoom-bar').style.width=Math.round(((globalZoom-.3)/4.2)*100)+'%';
+
+    // GRAB with FIST ✊
+    if(gesture==='closed'){
+      if(!grabbedMol){
+        molecules.forEach(m=>{m.hover=m.isNear(handX,handY);});
+        const cl=molecules.filter(m=>m.isNear(handX,handY)&&!m.crushing)[0];
+        if(cl){cl.grabbed=true;grabbedMol=cl;}
+      }
+      if(grabbedMol){
+        grabbedMol.x+=(handX-grabbedMol.x)*.2;
+        grabbedMol.y+=(handY-grabbedMol.y)*.2;
+        document.getElementById('grabbed').textContent=MOL_INFO[grabbedMol.type]?.name.toUpperCase()||'—';
+      }
+    }
+
+    // RELEASE with OPEN HAND ✋
+    if(gesture==='open'&&grabbedMol){
+      if(grabbedMol.type==='co2'){
+        crushCO2(grabbedMol);
+      } else {
+        for(let i=0;i<15;i++)particles.push(new Particle(grabbedMol.x,grabbedMol.y,'#00ffe7',5,false));
+        grabbedMol.grabbed=false;
+      }
+      grabbedMol=null;
+      document.getElementById('grabbed').textContent='AUCUN';
+    }
+
+    if(gesture!==lastGesture){
+      lastGesture=gesture;
+      for(let i=0;i<10;i++)particles.push(new Particle(handX,handY,null,4,false));
+    }
+
+    pincer.update(handX,handY,gesture==='open');
+  } else {
+    handPresent=false;gesture='none';
+    document.getElementById('dot-hand').className='dot warn';
+    document.getElementById('txt-hand').textContent='MAIN: —';
+    document.getElementById('gesture-name').textContent='—';
+    document.getElementById('gesture-desc').textContent='Aucune main détectée';
+    if(grabbedMol){grabbedMol.grabbed=false;grabbedMol=null;}
+    pincer.fadeOut();molecules.forEach(m=>m.hover=false);
+    lastPinchDist=null;zoomMode=false;
+  }
+}
+
+// ── RENDER ────────────────────────────────────────────
+function drawGrid(){
+  ctx.save();ctx.strokeStyle='rgba(0,255,231,0.04)';ctx.lineWidth=1;
+  const s=60;
+  for(let x=0;x<W;x+=s){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=s){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+}
+
+function drawZoomHUD(){
+  if(!zoomMode)return;
+  ctx.save();ctx.globalAlpha=.7;
+  ctx.strokeStyle='rgba(0,255,231,.5)';ctx.lineWidth=2;ctx.setLineDash([4,5]);
+  ctx.beginPath();ctx.arc(handX,handY,46,0,Math.PI*2);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(0,255,231,.9)';
+  ctx.font='bold 15px Exo 2,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(globalZoom.toFixed(1)+'×',handX,handY-60);
+  ctx.restore();
+}
+
+function loop(){
+  frameCount++;
+  const now=performance.now();
+  if(now-lastFpsTime>500){
+    const f=Math.round(frameCount*1000/(now-(lastFpsTime||now-500)));
+    frameCount=0;lastFpsTime=now;
+    document.getElementById('txt-fps').textContent=f+' FPS';
+  }
+  ctx.clearRect(0,0,W,H);
+  drawGrid();
+  molecules=molecules.filter(m=>m.alive||m.alpha>0);
+  molecules.forEach(m=>{m.update();m.draw();});
+  particles.forEach(p=>{p.update();p.draw();});
+  particles=particles.filter(p=>p.alive);
+  pincer.draw();
+  drawZoomHUD();
+  requestAnimationFrame(loop);
+}
+
+// ── CAMERA ────────────────────────────────────────────
+async function startCamera(){
+  document.getElementById('start-btn').style.display='none';
+  setLoad('Accès caméra...',25);
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720,facingMode:'user'}});
+    videoBg.srcObject=stream;await videoBg.play();
+    videoBg.classList.add('visible');
+    document.getElementById('dot-cam').className='dot on';
+    document.getElementById('txt-cam').textContent='CAM ON';
+    setLoad('Chargement MediaPipe...',55);
+    initHands();
+    const camera=new Camera(videoBg,{onFrame:async()=>{await hands.send({image:videoBg});},width:1280,height:720});
+    setLoad('Démarrage...',85);
+    await camera.start();
+    setLoad('Prêt !',100);
+    setTimeout(()=>document.getElementById('loading').classList.add('hidden'),700);
+  }catch(e){
+    document.getElementById('load-msg').textContent='Erreur : '+e.message;
+    document.getElementById('load-msg').style.color='#ff3355';
+    document.getElementById('start-btn').style.display='inline-block';
+    document.getElementById('start-btn').textContent='↺ RÉESSAYER';
+  }
+}
+
+function setLoad(msg,pct){
+  document.getElementById('load-msg').textContent=msg;
+  document.getElementById('load-bar').style.width=pct+'%';
+}
+
+window.addEventListener('load',()=>{
+  spawnMolecules();loop();
+  setLoad('Prêt à démarrer',18);
+  setTimeout(()=>document.getElementById('start-btn').style.display='inline-block',800);
+});
+</script>
+</body>
+</html>
